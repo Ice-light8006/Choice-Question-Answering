@@ -14,8 +14,12 @@
 #include<Qlabel>
 #include<QCheckBox>
 #include<QLayoutItem>
+#include<algorithm>
+#include<QRandomGenerator>
 #include<QFile>
 #include<QCoreApplication>
+#include<QTableWidget>
+#include<QHeaderView>
 
 
 #define PARSE_FAIL_MESSENAGE "JSON文本解析失败"
@@ -40,6 +44,7 @@ MainWidget::MainWidget(QWidget *parent)
 
     //主界面按钮
     QPushButton *Start_Answer_Button = new QPushButton("开始答题",homepage);
+    QPushButton *Random_Answer_Button = new QPushButton("随机抽题",homepage);
     QPushButton *Import_Question_Button = new QPushButton("导入题目",homepage);
     QPushButton *Clear = new QPushButton("清空题目",homepage);
     QPushButton *Exit = new QPushButton("退出程序",homepage);
@@ -47,12 +52,14 @@ MainWidget::MainWidget(QWidget *parent)
 
     QVBoxLayout *homepageLayout = new QVBoxLayout(homepage);
     homepageLayout->addWidget(Start_Answer_Button);
+    homepageLayout->addWidget(Random_Answer_Button);
     homepageLayout->addWidget(Import_Question_Button);
     homepageLayout->addWidget(Clear);
     homepageLayout->addWidget(Exit);
 
     //连接信号与槽
     connect(Start_Answer_Button,&QPushButton::clicked,this,&MainWidget::GoToAnswerPage);
+    connect(Random_Answer_Button,&QPushButton::clicked,this,&MainWidget::RandomAnswer);
     connect(Import_Question_Button,&QPushButton::clicked,this,&MainWidget::GoToImportPage);
     connect(Clear,&QPushButton::clicked,this,&MainWidget::ClearQuestions);
     connect(Exit,&QPushButton::clicked,this,&MainWidget::ExitProgram);
@@ -67,20 +74,46 @@ MainWidget::MainWidget(QWidget *parent)
     connect(importpage_Import_Question_Button,&QPushButton::clicked,this,&MainWidget::ImportQuestions);
 
     //构建答题界面
+    this->Root_AnswerPage_Layout = new QHBoxLayout(answerpage);
     this->Main_AnswerPage_Layout = new QVBoxLayout(answerpage);
-    answerpage->setLayout(Main_AnswerPage_Layout);
     this->Button_AnswerPage_Layout = new QHBoxLayout(answerpage);
+    Root_AnswerPage_Layout->addLayout(Main_AnswerPage_Layout);
     Main_AnswerPage_Layout->addLayout(Button_AnswerPage_Layout);
+
+
+
     this->Next_Question = new QPushButton("下一题",answerpage);
     this->Submit = new QPushButton("检查答案",answerpage);
+    this->Return_Home = new QPushButton("回到主页",answerpage);
     this->Previous_Question = new QPushButton("上一题",answerpage);
+
+
+    this->tableWidget = new QTableWidget(answerpage);
+    Root_AnswerPage_Layout->addWidget(tableWidget);
+    answerpage->setLayout(Root_AnswerPage_Layout);
+
+
     connect(Submit,&QPushButton::clicked,this,&MainWidget::CheckAnswer);
     connect(Next_Question,&QPushButton::clicked,this,&MainWidget::NextQuestion);
     connect(Previous_Question,&QPushButton::clicked,this,&MainWidget::PreviousQuestion);
+    connect(Return_Home,&QPushButton::clicked,this,&MainWidget::ReturnHome);
+
+
+
     Button_AnswerPage_Layout->addWidget(Previous_Question);
     Button_AnswerPage_Layout->addWidget(Submit);
+    Button_AnswerPage_Layout->addWidget(Return_Home);
     Button_AnswerPage_Layout->addWidget(Next_Question);
 
+    //构建随机抽题输入题数的界面
+    this->inputnumpage = new QDialog;
+    this->inputedit = new QLineEdit(this->inputnumpage);
+    QPushButton *InputNum = new QPushButton("确定",inputnumpage);
+    this->Inputnumpage_Layout = new QVBoxLayout;
+    this->Inputnumpage_Layout->addWidget(inputedit);
+    this->Inputnumpage_Layout->addWidget(InputNum);
+    inputnumpage->setLayout(Inputnumpage_Layout);
+    connect(InputNum,&QPushButton::clicked,this,&MainWidget::ImportNum);
 
 
     QFile Question_File(FILENAME);
@@ -109,7 +142,7 @@ MainWidget::MainWidget(QWidget *parent)
             QString C_Text = options["C"].toString();
             QString D_Text = options["D"].toString();
             Single_Question *q = new Single_Question(i,0,title,A_Text,B_Text,C_Text,D_Text,answer);
-            this->questions.push_back(q);
+            this->QuestionStore.push_back(q);
         }
         else if(type==1)
         {
@@ -118,14 +151,14 @@ MainWidget::MainWidget(QWidget *parent)
             QString C_Text = options["C"].toString();
             QString D_Text = options["D"].toString();
             Mutiply_Question *q = new Mutiply_Question(i,0,title,A_Text,B_Text,C_Text,D_Text,answer);
-            this->questions.push_back(q);
+            this->QuestionStore.push_back(q);
         }
         else
         {
             QString A_Text = options["A"].toString();
             QString B_Text = options["B"].toString();
             True_or_False_Question *q = new True_or_False_Question(i,0,title,A_Text,B_Text,answer);
-            this->questions.push_back(q);
+            this->QuestionStore.push_back(q);
         }
     }
     this->sum_questions = JsonArrStore.size();
@@ -178,6 +211,31 @@ void MainWidget::ClearWidget()
     D = nullptr;
 }
 
+void MainWidget::InitializeTableWidget(int cnt)
+{
+    this->row = ceil(cnt/5.0);
+    this->column = 5;
+    this->tableWidget->setRowCount(row);
+    this->tableWidget->setColumnCount(column);
+    for(int i = 0;i<cnt;i++)
+    {
+        QTableWidgetItem *Item = new QTableWidgetItem(QString::number(i+1));
+        this->tableWidget->setItem(i/5,i%5,Item);
+    }
+    tableWidget->resizeColumnsToContents();
+    tableWidget->resizeRowsToContents();
+    tableWidget->setFixedWidth(140);
+    tableWidget->horizontalHeader()->hide();
+    tableWidget->verticalHeader()->hide();
+    tableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    tableWidget->setFocusPolicy(Qt::NoFocus);
+    tableWidget->setSelectionMode(QAbstractItemView::SingleSelection);
+
+    connect(tableWidget,&QTableWidget::cellClicked,this,[=](int row,int column){
+        this->GoToQuestion(row*5+column);
+    });
+}
+
 void MainWidget::GoToAnswerPage()
 {
     if(this->sum_questions==0)
@@ -186,14 +244,20 @@ void MainWidget::GoToAnswerPage()
         return;
     }
     ClearWidget();
+    this->WaitToBeAnswerQuestions = this->QuestionStore;
+    this->sum_WaitToBeAnswerQuestion = sum_questions;
+    this->InitializeTableWidget(sum_questions);
     qsw->setCurrentWidget(answerpage);
-    Question *q = this->questions.front();
+    Question *q = this->WaitToBeAnswerQuestions.front();
     int type = q->getType();
     this->cur_type = type;
     QString title = q->getTitle();
     QString Answer = q->getAnswer();
+    QLabel_Title = new QLabel(title,answerpage);
+    QLabel_Title->setWordWrap(true);
     this->cur_answer = Answer;
     this->cur_question = 0;
+    tableWidget->setCurrentCell(cur_question/5,cur_question%5);
     if(type==0)
     {
         QString A_Text = q->getAText();
@@ -202,7 +266,7 @@ void MainWidget::GoToAnswerPage()
         QString D_Text = q->getDText();
 
         //构建标题
-        QLabel_Title = new QLabel(title,answerpage);
+
         this->Main_AnswerPage_Layout->insertWidget(0,QLabel_Title);
 
 
@@ -225,7 +289,7 @@ void MainWidget::GoToAnswerPage()
         QString D_Text = q->getDText();
 
         //构建标题
-        QLabel_Title = new QLabel(title,answerpage);
+
         this->Main_AnswerPage_Layout->insertWidget(0,QLabel_Title);
 
         //构建选项
@@ -245,16 +309,12 @@ void MainWidget::GoToAnswerPage()
         QString B_Text = q->getBText();
 
         //构建标题
-        QLabel_Title = new QLabel(title,answerpage);
+
         this->Main_AnswerPage_Layout->insertWidget(0,QLabel_Title);
 
         //构建选项
         this->A = new QRadioButton("A. "+A_Text,answerpage);
         this->B = new QRadioButton("B. "+B_Text,answerpage);
-
-        Main_AnswerPage_Layout->removeWidget(C);
-        Main_AnswerPage_Layout->removeWidget(D);
-
 
         this->Main_AnswerPage_Layout->insertWidget(1,A);
         this->Main_AnswerPage_Layout->insertWidget(2,B);
@@ -325,7 +385,7 @@ void MainWidget::ImportQuestions()
             QString D_Text = options.value("D").toString();
             QString Answer = TempJsonObj.value("answer").toString();
             Question *q = new Single_Question(i,type,title,A_Text,B_Text,C_Text,D_Text,Answer);
-            this->questions.push_back(q);
+            this->QuestionStore.push_back(q);
             this->sum_questions++;
         }
         else if(type==1)
@@ -341,7 +401,7 @@ void MainWidget::ImportQuestions()
             QString D_Text = options.value("D").toString();
             QString Answer = TempJsonObj.value("answer").toString();
             Question *q = new Mutiply_Question(i,type,title,A_Text,B_Text,C_Text,D_Text,Answer);
-            this->questions.push_back(q);
+            this->QuestionStore.push_back(q);
             this->sum_questions++;
         }
         else
@@ -355,7 +415,7 @@ void MainWidget::ImportQuestions()
             QString B_Text = options.value("B").toString();
             QString Answer = TempJsonObj.value("answer").toString();
             Question *q = new True_or_False_Question(i,type,title,A_Text,B_Text,Answer);
-            this->questions.push_back(q);
+            this->QuestionStore.push_back(q);
             this->sum_questions++;
         }
     }
@@ -369,10 +429,10 @@ void MainWidget::ImportQuestions()
     }
     QJsonObject rootObj;
     QJsonArray rootQuestionArray;
-    for(int i = 0;i<this->questions.size();i++)
+    for(int i = 0;i<this->QuestionStore.size();i++)
     {
-        Question *q = this->questions[i];
-        if(this->questions[i]->getType()==0)
+        Question *q = this->QuestionStore[i];
+        if(this->QuestionStore[i]->getType()==0)
         {
             QJsonObject TempJsonObj;
             QJsonObject Options;
@@ -387,7 +447,7 @@ void MainWidget::ImportQuestions()
             rootQuestionArray.append(TempJsonObj);
 
         }
-        else if(this->questions[i]->getType()==1)
+        else if(this->QuestionStore[i]->getType()==1)
         {
             QJsonObject TempJsonObj;
             QJsonObject Options;
@@ -501,20 +561,24 @@ void MainWidget::CheckAnswer()
 
 void MainWidget::NextQuestion()
 {
-    if(cur_question==sum_questions-1)
+    if(cur_question==sum_WaitToBeAnswerQuestion-1)
     {
         QMessageBox::critical(nullptr,"警告","已经是最后一题了！");
+        this->WaitToBeAnswerQuestions.clear();
         this->qsw->setCurrentWidget(homepage);
         return;
     }
     ClearWidget();
     cur_question++;
-    Question *q = this->questions[cur_question];
+    tableWidget->setCurrentCell(cur_question/5,cur_question%5);
+    Question *q = this->WaitToBeAnswerQuestions[cur_question];
     int type = q->getType();
     this->cur_type = type;
     QString title = q->getTitle();
     QString Answer = q->getAnswer();
     this->cur_answer = Answer;
+    QLabel_Title = new QLabel(title,answerpage);
+    QLabel_Title->setWordWrap(true);
     if(type==0)
     {
         QString A_Text = q->getAText();
@@ -523,7 +587,6 @@ void MainWidget::NextQuestion()
         QString D_Text = q->getDText();
 
         //构建标题
-        QLabel_Title = new QLabel(title,answerpage);
         this->Main_AnswerPage_Layout->insertWidget(0,QLabel_Title);
 
         //构建选项
@@ -545,7 +608,6 @@ void MainWidget::NextQuestion()
         QString D_Text = q->getDText();
 
         //构建标题
-        QLabel_Title = new QLabel(title,answerpage);
         this->Main_AnswerPage_Layout->insertWidget(0,QLabel_Title);
 
         //构建选项
@@ -565,25 +627,25 @@ void MainWidget::NextQuestion()
         QString B_Text = q->getBText();
 
         //构建标题
-        QLabel_Title = new QLabel(title,answerpage);
         this->Main_AnswerPage_Layout->insertWidget(0,QLabel_Title);
 
         //构建选项
         this->A = new QRadioButton("A. "+A_Text,answerpage);
         this->B = new QRadioButton("B. "+B_Text,answerpage);
 
-        Main_AnswerPage_Layout->removeWidget(C);
-        Main_AnswerPage_Layout->removeWidget(D);
 
         this->Main_AnswerPage_Layout->insertWidget(1,A);
         this->Main_AnswerPage_Layout->insertWidget(2,B);
     }
+    this->tableWidget->hide();
+    this->tableWidget->show();
 }
 
 void MainWidget::ClearQuestions()
 {
-    this->questions.clear();
+    this->QuestionStore.clear();
     sum_questions = 0;
+    sum_WaitToBeAnswerQuestion = 0;
     cur_question = 0;
     QFile file(FILENAME);
     if(!file.exists())
@@ -609,12 +671,124 @@ void MainWidget::PreviousQuestion()
     }
     ClearWidget();
     cur_question--;
-    Question *q = this->questions[cur_question];
+    tableWidget->setCurrentCell(cur_question/5,cur_question%5);
+    Question *q = this->WaitToBeAnswerQuestions[cur_question];
     int type = q->getType();
     this->cur_type = type;
     QString title = q->getTitle();
     QString Answer = q->getAnswer();
     this->cur_answer = Answer;
+    QLabel_Title = new QLabel(title,answerpage);
+    QLabel_Title->setWordWrap(true);
+    if(type==0)
+    {
+        QString A_Text = q->getAText();
+        QString B_Text = q->getBText();
+        QString C_Text = q->getCText();
+        QString D_Text = q->getDText();
+
+        //构建标题
+        this->Main_AnswerPage_Layout->insertWidget(0,QLabel_Title);
+
+        //构建选项
+        this->A = new QRadioButton("A. "+A_Text,answerpage);
+        this->B = new QRadioButton("B. "+B_Text,answerpage);
+        this->C = new QRadioButton("C. "+C_Text,answerpage);
+        this->D = new QRadioButton("D. "+D_Text,answerpage);
+
+        this->Main_AnswerPage_Layout->insertWidget(1,A);
+        this->Main_AnswerPage_Layout->insertWidget(2,B);
+        this->Main_AnswerPage_Layout->insertWidget(3,C);
+        this->Main_AnswerPage_Layout->insertWidget(4,D);
+    }
+    else if(type==1)
+    {
+        QString A_Text = q->getAText();
+        QString B_Text = q->getBText();
+        QString C_Text = q->getCText();
+        QString D_Text = q->getDText();
+
+        //构建标题
+        this->Main_AnswerPage_Layout->insertWidget(0,QLabel_Title);
+
+        //构建选项
+        this->A = new QCheckBox("A. "+A_Text,answerpage);
+        this->B = new QCheckBox("B. "+B_Text,answerpage);
+        this->C = new QCheckBox("C. "+C_Text,answerpage);
+        this->D = new QCheckBox("D. "+D_Text,answerpage);
+
+        this->Main_AnswerPage_Layout->insertWidget(1,A);
+        this->Main_AnswerPage_Layout->insertWidget(2,B);
+        this->Main_AnswerPage_Layout->insertWidget(3,C);
+        this->Main_AnswerPage_Layout->insertWidget(4,D);
+    }
+    else
+    {
+        QString A_Text = q->getAText();
+        QString B_Text = q->getBText();
+
+        //构建标题
+        this->Main_AnswerPage_Layout->insertWidget(0,QLabel_Title);
+
+        //构建选项
+        this->A = new QRadioButton("A. "+A_Text,answerpage);
+        this->B = new QRadioButton("B. "+B_Text,answerpage);
+
+        this->Main_AnswerPage_Layout->insertWidget(1,A);
+        this->Main_AnswerPage_Layout->insertWidget(2,B);
+    }
+}
+
+void MainWidget::ExitProgram()
+{
+    qApp->quit();
+}
+
+void MainWidget::RandomAnswer()
+{
+    if(this->QuestionStore.size()==0)
+    {
+        QMessageBox::critical(nullptr,"错误","题库中没有题目");
+        return;
+    }
+
+    this->inputnumpage->exec();
+}
+
+void MainWidget::ImportNum()
+{
+    int num = this->inputedit->text().toInt();
+    if(num>this->QuestionStore.size()||num<=0)
+    {
+        QMessageBox::critical(nullptr,"错误","输入的数字有误");
+        return;
+    }
+    this->WaitToBeAnswerQuestions.clear();
+    this->inputnumpage->hide();
+    sum_WaitToBeAnswerQuestion = num;
+    cur_question = 0;
+    tableWidget->setCurrentCell(cur_question/5,cur_question%5);
+    if(num==this->QuestionStore.size())
+    {
+        GoToAnswerPage();
+        return;
+    }
+    InitializeTableWidget(num);
+    QVector<Question*> TempQVector = this->QuestionStore;
+    std::shuffle(TempQVector.begin(),TempQVector.end(),*QRandomGenerator::global());
+    for(int i = 0;i<num;i++)
+    {
+        this->WaitToBeAnswerQuestions.push_back(TempQVector[i]);
+    }
+    ClearWidget();
+    qsw->setCurrentWidget(answerpage);
+    Question *q = this->WaitToBeAnswerQuestions.front();
+    int type = q->getType();
+    this->cur_type = type;
+    QString title = q->getTitle();
+    QString Answer = q->getAnswer();
+    this->cur_answer = Answer;
+    this->cur_question = 0;
     if(type==0)
     {
         QString A_Text = q->getAText();
@@ -625,6 +799,7 @@ void MainWidget::PreviousQuestion()
         //构建标题
         QLabel_Title = new QLabel(title,answerpage);
         this->Main_AnswerPage_Layout->insertWidget(0,QLabel_Title);
+
 
         //构建选项
         this->A = new QRadioButton("A. "+A_Text,answerpage);
@@ -672,17 +847,92 @@ void MainWidget::PreviousQuestion()
         this->A = new QRadioButton("A. "+A_Text,answerpage);
         this->B = new QRadioButton("B. "+B_Text,answerpage);
 
-        Main_AnswerPage_Layout->removeWidget(C);
-        Main_AnswerPage_Layout->removeWidget(D);
 
         this->Main_AnswerPage_Layout->insertWidget(1,A);
         this->Main_AnswerPage_Layout->insertWidget(2,B);
     }
 }
 
-void MainWidget::ExitProgram()
+void MainWidget::ReturnHome()
 {
-    qApp->quit();
+    this->WaitToBeAnswerQuestions.clear();
+    this->sum_WaitToBeAnswerQuestion = 0;
+    this->qsw->setCurrentWidget(homepage);
+}
+
+void MainWidget::GoToQuestion(int x)
+{
+    ClearWidget();
+    Question *q = this->WaitToBeAnswerQuestions[x];
+    int type = q->getType();
+    this->cur_type = type;
+    QString title = q->getTitle();
+    QString Answer = q->getAnswer();
+    this->cur_answer = Answer;
+    this->cur_question = x;
+    QLabel_Title = new QLabel(title,answerpage);
+    QLabel_Title->setWordWrap(true);
+    if(type==0)
+    {
+        QString A_Text = q->getAText();
+        QString B_Text = q->getBText();
+        QString C_Text = q->getCText();
+        QString D_Text = q->getDText();
+
+        //构建标题
+
+        this->Main_AnswerPage_Layout->insertWidget(0,QLabel_Title);
+
+
+        //构建选项
+        this->A = new QRadioButton("A. "+A_Text,answerpage);
+        this->B = new QRadioButton("B. "+B_Text,answerpage);
+        this->C = new QRadioButton("C. "+C_Text,answerpage);
+        this->D = new QRadioButton("D. "+D_Text,answerpage);
+
+        this->Main_AnswerPage_Layout->insertWidget(1,A);
+        this->Main_AnswerPage_Layout->insertWidget(2,B);
+        this->Main_AnswerPage_Layout->insertWidget(3,C);
+        this->Main_AnswerPage_Layout->insertWidget(4,D);
+    }
+    else if(type==1)
+    {
+        QString A_Text = q->getAText();
+        QString B_Text = q->getBText();
+        QString C_Text = q->getCText();
+        QString D_Text = q->getDText();
+
+        //构建标题
+
+        this->Main_AnswerPage_Layout->insertWidget(0,QLabel_Title);
+
+        //构建选项
+        this->A = new QCheckBox("A. "+A_Text,answerpage);
+        this->B = new QCheckBox("B. "+B_Text,answerpage);
+        this->C = new QCheckBox("C. "+C_Text,answerpage);
+        this->D = new QCheckBox("D. "+D_Text,answerpage);
+
+        this->Main_AnswerPage_Layout->insertWidget(1,A);
+        this->Main_AnswerPage_Layout->insertWidget(2,B);
+        this->Main_AnswerPage_Layout->insertWidget(3,C);
+        this->Main_AnswerPage_Layout->insertWidget(4,D);
+    }
+    else
+    {
+        QString A_Text = q->getAText();
+        QString B_Text = q->getBText();
+
+        //构建标题
+
+        this->Main_AnswerPage_Layout->insertWidget(0,QLabel_Title);
+
+        //构建选项
+        this->A = new QRadioButton("A. "+A_Text,answerpage);
+        this->B = new QRadioButton("B. "+B_Text,answerpage);
+
+        this->Main_AnswerPage_Layout->insertWidget(1,A);
+        this->Main_AnswerPage_Layout->insertWidget(2,B);
+    }
 }
 
 MainWidget::~MainWidget()
