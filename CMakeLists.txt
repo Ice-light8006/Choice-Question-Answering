@@ -1,5 +1,6 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.16) #要求最低CMake版本，要不然不给你编译
 
+#定义项目，名字choice_question_answer，版本0.1，语言CXX（cpp）
 project(choice_question_answer VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_AUTOUIC ON)
@@ -9,48 +10,85 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
+# 查找 Qt 组件：Widgets 和 Sql
+find_package(Qt6 REQUIRED COMPONENTS Widgets Sql Core Core5Compat)
 
+
+
+# 列出所有源文件
 set(PROJECT_SOURCES
-        main.cpp
-        widget.cpp
-        widget.h
+    main.cpp
+    MainWindow.cpp
+    MainWindow.h
+    Question.cpp
+    Question.h
+    DatabaseManager.h
+    DatabaseManager.cpp
 )
 
-if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
-    qt_add_executable(choice_question_answer
-        MANUAL_FINALIZATION
-        ${PROJECT_SOURCES}
-        question.h
-        question.cpp
-    )
-# Define target properties for Android with Qt 6 as:
-#    set_property(TARGET choice_question_answer APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
-#                 ${CMAKE_CURRENT_SOURCE_DIR}/android)
-# For more information, see https://doc.qt.io/qt-6/qt-add-executable.html#target-creation
-else()
-    if(ANDROID)
-        add_library(choice_question_answer SHARED
-            ${PROJECT_SOURCES}
-        )
-# Define properties for Android with Qt 5 after find_package() calls as:
-#    set(ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
-    else()
-        add_executable(choice_question_answer
-            ${PROJECT_SOURCES}
-        )
-    endif()
-endif()
+# 创建可执行文件
+qt_add_executable(choice_question_answer
+    MANUAL_FINALIZATION
+    ${PROJECT_SOURCES}
+    QuestionsManager.h
+    QuestionsManager.cpp
+    JsonManager.h
+    JsonManager.cpp
+    HomePage.h
+    HomePage.cpp
+    AnswerPage.h
+    AnswerPage.cpp
+    MenuBar.cpp
+    MenuBar.h
+    ImportJsonPage.h
+    ImportJsonPage.cpp
+    DatabaseSelectWidget.h
+    DatabaseSelectWidget.cpp
+    StartPage.h
+    StartPage.cpp
+    MyListWidget.h
+    QuizManager.cpp
+    QuizManager.h
+    CurrentSizeStackedWidget.h
+    QPackManager.h
+    QPackManager.cpp
+    MyUtils.h
 
-target_link_libraries(choice_question_answer PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
 
-# Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
-# If you are developing for iOS or macOS you should consider setting an
-# explicit, fixed bundle identifier manually though.
-if(${QT_VERSION} VERSION_LESS 6.1.0)
-  set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER com.example.choice_question_answer)
-endif()
+)
+
+# 为 target 添加 QUAZIP_STATIC 宏定义
+target_compile_definitions(choice_question_answer PRIVATE
+    QUAZIP_STATIC
+)
+
+# 设置zlib和quazip的头文件和库文件路径
+set(ZLIB_ROOT "C:/dev/zlib-install")
+set(QUAZIP_ROOT "C:/dev/quazip-1.5") # 指向你的quazip编译输出目录
+
+find_package(ZLIB REQUIRED)
+
+# 添加头文件搜索路径
+target_include_directories(choice_question_answer PRIVATE
+    ${QUAZIP_ROOT}/include
+)
+
+# 链接必要的 Qt 模块（使用 keyword 风格）
+target_link_libraries(choice_question_answer PRIVATE
+    Qt6::Widgets
+    Qt6::Sql
+    ${QUAZIP_ROOT}/libquazip1-qt6.a # 或直接链接 libquazip.a
+    ZLIB::ZLIB
+    Qt6::Core5Compat
+)
+
+
+
+
+
+# Qt for iOS 设置
+set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER com.example.choice_question_answer)
+
 set_target_properties(choice_question_answer PROPERTIES
     ${BUNDLE_ID_OPTION}
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
