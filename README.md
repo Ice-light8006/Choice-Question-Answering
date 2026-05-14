@@ -92,7 +92,7 @@ CREATE TABLE Images (
 
 # JSON 导入格式
 
-程序支持直接导入 JSON 文本。
+程序支持直接导入 JSON 文本。会根据JSON文本生成对应的数据库文件
 
 示例：
 
