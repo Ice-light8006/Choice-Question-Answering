@@ -263,23 +263,10 @@ std::shuffle
 
 ---
 
-# 运行截图（待补充）
+# 运行截图
 
-你可以在这里放项目截图：
-
-```text
-assets/
-├── home.png
-├── answer.png
-├── import.png
-└── database.png
-```
-
-然后在 README 中引用：
-
-```markdown
-![home](assets/home.png)
-```
+![homepage](assets/homepage.png)
+![answerpage](assets/answerpage.png)
 
 ---
 
@@ -296,4 +283,4 @@ assets/
 
 # License
 
-MIT License
+GPL License
